@@ -1,0 +1,199 @@
+^Wimport json import logging import time from fastapi import FastAPI, 
+Request from fastapi.responses import StreamingResponse import httpx 
+import asyncio timeout app = FastAPI(title="Mini Bridge v2") 
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] 
+%(levelname)s: %(message)s")
+
+PROMPT_INJECTOR_URL = "http://prompt-injector:4300/api/chat" ^W 
+httpx.AsyncClient
+# ------------------------------------------------------------ 🔹 MODEL 
+# LISTING (AnythingLLM → Bridge) 
+# ------------------------------------------------------------
+^X@app.api_route("/v1/models", methods=["GET", "POST"]) async def 
+list_models(): N """Kompatibilität für AnythingLLM (GET & POST 
+erlaubt)""" ^C return {
+:q!  "object": "list",
+        "data": [
+            {"id": "deepseek-r1:8b", "object": "model", "owned_by": "local", "permission": []},
+            {"id": "qwen2.5:1.5b-instruct", "object": "model", "owned_by": "local", "permission": []},
+        ],
+    }
+
+
+# ------------------------------------------------------------
+# 🔹 MCP-HANDSHAKE & TOOLLIST
+# ------------------------------------------------------------
+@app.post("/")
+async def mcp_root(request: Request):
+    """AnythingLLM sendet hier MCP-Handshake & Tool-List-Requests"""
+    try:
+        body = await request.json()
+
+        # MCP Handshake / Initialize
+        if body.get("method") == "initialize":
+            logging.info("[Bridge] ⚙️ MCP-Handshake erkannt.")
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {
+                    "protocolVersion": "2024-11-05",  # ✅ Updated to supported version
+                    "capabilities": {
+                        "tools": {
+                            "list": True,
+                            "call": True,
+                        }
+                    },
+                    "serverInfo": {"name": "mini-bridge", "version": "1.0"},
+                },
+            }
+
+        # MCP Tool-Liste
+        if body.get("method") == "tools/list":
+            logging.info("[Bridge] 🧰 MCP Tool-List Request erkannt.")
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {
+                    "tools": [
+                        {
+                            "name": "bridge-chat",
+                            "description": "Connects Prompt-Injector to AnythingLLM",
+                            "inputSchema": {"type": "object", "properties": {"message": {"type": "string"}}},
+                        }
+                    ]
+                },
+            }
+
+        # MCP Tool-Aufruf (optional stub)
+        if body.get("method") == "tools/call":
+            logging.info("[Bridge] 🛠️ MCP Tool-Aufruf erkannt.")
+            params = body.get("params", {})
+            message = params.get("message", "No input")
+            return {
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {"output": f"Bridge received your message: {message}"},
+            }
+
+        # MCP Ping / Fallback
+        logging.info("[Bridge] 🩺 MCP Status-/Ping-Request erkannt.")
+        return {
+            "jsonrpc": "2.0",
+            "id": body.get("id", 1),
+            "result": {}
+        }
+
+    except Exception as e:
+        logging.error(f"[Bridge] ⚠️ MCP Fehler: {e}")
+        return {"jsonrpc": "2.0", "id": 1, "error": str(e)}
+
+
+# ------------------------------------------------------------
+# 🔹 AnythingLLM → Bridge → Prompt Injector
+# ------------------------------------------------------------
+@app.post("/v1/chat/completions")
+async def chat_proxy(request: Request):
+    payload = await request.json()
+    logging.info(f"[Bridge] 🔹 Eingehende Anfrage: {payload}")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(PROMPT_INJECTOR_URL, json=payload)
+            response.raise_for_status()  # Raise error for bad status codes
+            logging.info(f"[Bridge] ✅ Antwort vom Prompt-Injector ({response.status_code})")
+
+            raw = response.json()
+            logging.info(f"[Bridge] 🔍 RAW Response vom Prompt-Injector: {raw}")
+
+            # Inhalt extrahieren
+            content = (
+                raw.get("final")
+                or raw.get("message", {}).get("content")
+                or raw.get("text_out")
+                or raw.get("output")
+                or ""
+            )
+
+            if not content:
+                for val in raw.values():
+                    if isinstance(val, str) and any(word in val for word in ["😊", "Hallo", "Uhr", "Zeit"]):
+                        content = val
+                        break
+            
+            # If still no content, return error
+            if not content:
+                logging.warning("[Bridge] ⚠️ Keine Antwort vom Prompt-Injector extrahiert")
+                content = "[Keine Antwort vom Prompt-Injector erhalten]"
+
+            # ------------------------------------------------------------
+            # ✅ STREAMING-KOMPATIBEL (AnythingLLM-kompatibel)
+            # ------------------------------------------------------------
+            if payload.get("stream") is True:
+                async def event_stream():
+                    # 1️⃣ Rolle an AnythingLLM senden
+                    yield f"data: {json.dumps({'choices':[{'delta':{'role':'assistant'}}]})}\n\n"
+                    await asyncio.sleep(0.05)
+
+                    # 2️⃣ Text stückweise senden
+                    for token in content.split():
+                        yield f"data: {json.dumps({'choices':[{'delta':{'content': token + ' '}}]})}\n\n"
+                        await asyncio.sleep(0.02)
+
+                    # 3️⃣ Abschlussblock
+                    yield f"data: {json.dumps({'choices':[{'delta':{},'finish_reason':'stop','index':0}]})}\n\n"
+                    await asyncio.sleep(0.05)
+
+                    # 4️⃣ Offizielles Endsignal
+                    yield "data: [DONE]\n\n"
+                    await asyncio.sleep(0.1)
+
+                return StreamingResponse(
+                    event_stream(),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+                )
+
+            # ------------------------------------------------------------
+            # 🟢 Keine Stream-Antwort → normales JSON
+            # ------------------------------------------------------------
+            return {
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": "deepseek-r1:8b",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": content or "[Keine Antwort erhalten]"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": len(json.dumps(payload)),
+                    "completion_tokens": len(content),
+                    "total_tokens": len(json.dumps(payload)) + len(content),
+                },
+            }
+
+    except Exception as e:
+        logging.error(f"[Bridge] ❌ HTTPError beim Prompt-Injector: {e}")
+        return {"error": str(e)}
+
+
+# ------------------------------------------------------------
+# 🔹 MCP/Health Root (GET)
+# ------------------------------------------------------------
+@app.api_route("/", methods=["GET"])
+async def root_compat():
+    """Health check endpoint - JSON-RPC 2.0 compliant"""
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "status": "ok",
+            "service": "mini-bridge",
+            "message": "Bridge ready 🧠",
+            "version": "1.0",
+            "timestamp": int(time.time())
+        }
+    }

@@ -1,0 +1,85 @@
+{
+  "version": "2.1.0",
+  "meta": {
+    "author": "Danny0094",
+    "description": "Mehrsprachige Smart-Home- und Zeit-Regeln",
+    "default_language": "de",
+    "supported_languages": ["de", "en", "pt"],
+    "embedding_model": "embedding-gemma:2b",
+    "last_update": "2025-11-09T23:00:00Z"
+  },
+  "categories": [
+    {
+      "id": "home",
+      "name": {
+        "de": "Smart-Home-Steuerung",
+        "en": "Smart Home Control",
+        "pt": "Controle da Casa Inteligente"
+      },
+      "embedding": [0.12, -0.48, 0.87],
+      "tags": ["licht", "lamp", "luz", "geräte", "devices"],
+      "rules": [
+        {
+          "id": "light_on",
+          "pattern": {
+            "de": "(licht|lampe|hell)",
+            "en": "(light|lamp|bright)",
+            "pt": "(luz|lampada|claro)"
+          },
+          "tool": "light_control",
+          "confidence": 0.95,
+          "examples": {
+            "de": ["Mach das Licht an", "Kannst du es heller machen?"],
+            "en": ["Turn on the light", "Make it brighter"],
+            "pt": ["Ligue a luz", "Deixe mais claro"]
+          },
+          "enabled": true
+        },
+        {
+          "id": "door_unlock",
+          "pattern": {
+            "de": "(tür|haustür|aufmachen)",
+            "en": "(door|front door|open)",
+            "pt": "(porta|abrir)"
+          },
+          "tool": "door_control",
+          "confidence": 0.9,
+          "examples": {
+            "de": ["Öffne die Haustür"],
+            "en": ["Open the door"],
+            "pt": ["Abra a porta"]
+          },
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "time",
+      "name": {
+        "de": "Zeit & Datum",
+        "en": "Time & Date",
+        "pt": "Hora e Data"
+      },
+      "embedding": [0.01, 0.45, -0.29],
+      "tags": ["zeit", "time", "hora"],
+      "rules": [
+        {
+          "id": "get_time",
+          "pattern": {
+            "de": "(zeit|uhrzeit|spät)",
+            "en": "(time|clock|late)",
+            "pt": "(hora|relógio|tarde)"
+          },
+          "tool": "time",
+          "confidence": 0.98,
+          "examples": {
+            "de": ["Wie spät ist es?"],
+            "en": ["What time is it?"],
+            "pt": ["Que horas são?"]
+          },
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

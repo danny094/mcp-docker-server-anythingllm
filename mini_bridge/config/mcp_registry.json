@@ -1,0 +1,19 @@
+{
+  "autoReload": true,
+  "servers": [
+    {
+      "id": "dummy",
+      "name": "Dummy MCP",
+      "url": "http://dummy-mcp:4200",
+      "type": "streamable",
+      "enabled": true
+    },
+    {
+      "id": "time",
+      "name": "Time MCP",
+      "url": "http://mcp-time:4210",
+      "type": "streamable",
+      "enabled": true
+    }
+  ]
+}

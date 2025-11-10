@@ -1,0 +1,168 @@
+version: "3.9"
+
+services:
+  # --------------------------------------------------------
+  # AnythingLLM
+  # --------------------------------------------------------
+  anythingllm:
+    image: mintplexlabs/anythingllm
+    container_name: anythingllm
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mini-bridge
+    networks:
+      - danny_ai-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./anythingllm_data:/app/server/storage
+      - ./anythingllm_data/plugins/anythingllm_mcp_servers.json:/app/server/storage/plugins/anythingllm_mcp_servers.json
+    environment:
+      - STORAGE_DIR=/app/server/storage
+      - DEBUG_MCP=1
+      - LOG_LEVEL=debug
+    restart: unless-stopped
+
+  # --------------------------------------------------------
+  # Mini Bridge (MCP Interface für AnythingLLM)
+  # --------------------------------------------------------
+  mini-bridge:
+    build: ./mini_bridge
+    container_name: mini-bridge
+    ports:
+      - "4100:4100"
+    depends_on:
+      - prompt-injector
+    networks:
+      - danny_ai-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  #decision-engine:
+   # build: ./decision_engine
+    #container_name: decision-engine
+    #networks:
+     # - danny_ai-net
+    #volumes:
+     # - ./decision_rules/db:/app/db
+    #ports:
+     # - "4500:4500"
+  # --------------------------------------------------------
+  # Prompt Injector (DeepSeek & Tool Decision)
+  # --------------------------------------------------------
+  
+  prompt-injector:
+    build: ./prompt_injector
+    container_name: prompt-injector
+    ports:
+      - "4300:4300"
+    networks:
+      - danny_ai-net
+    environment:
+      - OLLAMA_MODEL=deepseek-r1:14b-qwen-distill-q4_K_M
+      - OLLAMA_URL=http://192.168.0.224:11434/api/chat
+      - MCP_HUB_URL=http://mcp-hub:4400
+      - DECISION_MODEL=qwen2.5:1.5b-instruct
+      - ANSWER_MODEL=deepseek-r1:14b-qwen-distill-q4_K_M
+      - TZ=Europe/Berlin
+    volumes:
+      - ./prompt_injector/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4300/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --------------------------------------------------------
+  # MCP-Hub (Zentraler Tool Router)
+  # --------------------------------------------------------
+  mcp-hub:
+    build: ./mcp_hub
+    container_name: mcp-hub
+    ports:
+      - "4400:4400"
+    networks:
+      - danny_ai-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4400/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --------------------------------------------------------
+  # MCP-Time Tool
+  # --------------------------------------------------------
+  mcp-time:
+    build: ./mcp_time
+    container_name: mcp-time
+    ports:
+      - "4210:4210"
+    networks:
+      - danny_ai-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4210/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 2
+
+  # --------------------------------------------------------
+  # n8n – Automations / Multi-KI Controller
+  # --------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=Passwort123  # <– ÄNDERN!
+      - WEBHOOK_URL=http://192.168.0.224:5678
+      - TZ=Europe/Berlin
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - danny_ai-net
+
+  # --------------------------------------------------------
+  # Dummy MCP / Legacy Services (optional)
+  # --------------------------------------------------------
+  # dummy-mcp:
+  #   build: ./dummy_MCP
+  #   container_name: dummy-mcp
+  #   ports:
+  #     - "4200:4200"
+  #   networks:
+  #     - danny_ai-net
+
+  # --------------------------------------------------------
+  # Router (veraltet, optional entfernen)
+  # --------------------------------------------------------
+  # mcp-router:
+  #   build: ./router
+  #   container_name: mcp-router
+  #   networks:
+  #     - danny_ai-net
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:4050/"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+# --------------------------------------------------------
+# Netzwerk
+# --------------------------------------------------------
+networks:
+  danny_ai-net:
+    name: danny_ai-net
+    driver: bridge

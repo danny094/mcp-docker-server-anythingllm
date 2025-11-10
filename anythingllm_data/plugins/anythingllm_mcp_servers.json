@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "bridge": {
+      "displayName": "Mini Bridge HTTP",
+      "description": "Sichere Forwarding Bridge zum Prompt-Injector",
+      "url": "http://mini-bridge:4100",
+      "type": "streamable",
+      "autoStart": true
+    }
+  }
+}
