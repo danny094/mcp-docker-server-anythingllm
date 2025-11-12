@@ -4,12 +4,23 @@
 Hello — I'm Danny, a solo developer, hobbyist dev, and security fanatic. This project provides a secure, Docker-friendly **bridge** for AnythingLLM, enabling the use of MCP (Model Context Protocol) tools across Docker networks — without granting Docker itself permission to start other containers.
 
 ## Why this project?
-AnythingLLM has a problem: Containers cannot (safely) start other containers. This breaks MCP workflows in isolated Docker setups. Instead of granting Docker additional privileges (which violates the security assumptions of containers), I built a different solution—an **MCP bridge** + **prompt injector** architecture.
-In short: I wanted to maintain control and security—and still be able to call tools (time, weather, docs, etc.) from within AnythingLLM.
----
+
+Most AI or LLM interfaces running in Docker share the same problem:  
+**Containers cannot (safely) start or manage other containers.**  
+This limitation breaks MCP workflows and prevents tool usage in isolated environments.
+
+Instead of granting Docker dangerous privileges (which defeats the entire purpose of container security),  
+I built a modular architecture — an **MCP Bridge** combined with a **Prompt Injector** —  
+that safely connects any UI (like AnythingLLM, OpenWebUI, or other local AI dashboards)  
+to MCP-compatible tools inside Docker networks.
+
+In short:  
+I wanted to maintain full control, stability, and security —  
+while still allowing AI systems to call real tools like `time`, `weather`, `docs`, or any custom MCP service.
+----
 
 ## Architecture (in brief)
-- **bridge** – a dummy MCP that acts as a target for AnythingLLM and forwards calls to real MCP services.
+- **bridge** – a dummy MCP that acts as a target for any AI WEBUI and forwards calls to real MCP services.
 - **prompt-injector** – central control center. Decides whether a tool is needed, injects system prompts, sanitizes input (security layer), and calls the MCP Hub if necessary.
 - **MCP Hub** – directory containing the available MCP tools (e.g., `time`, `weather`, `docs`), typically accessible as separate Docker containers.
 
