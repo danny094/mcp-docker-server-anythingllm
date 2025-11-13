@@ -290,9 +290,6 @@ async def handle_mcp(request: Request):
         }
 
 # -------------------------------------------------------------
-# OpenAI-kompatibler Chat Endpoint
-# -------------------------------------------------------------
-# -------------------------------------------------------------
 # OpenAI-kompatibler Chat Endpoint (mit Streaming-Support)
 # -------------------------------------------------------------
 @app.post("/v1/chat/completions")
@@ -318,20 +315,33 @@ async def chat_completions(request: Request):
         # STREAMING Response
         if stream:
             async def generate_stream():
-                chunk = {
-                    "id": "chatcmpl-" + str(time.time()),
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"role": "assistant", "content": text},
-                        "finish_reason": None
-                    }]
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                
-                # Final chunk
+                import asyncio
+
+                # chunk_size = 4 ist ideal
+                chunk_size = 4  
+
+                # Text in kleine Teile aufsplitten
+                chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+
+                for chunk_text in chunks:
+                    chunk = {
+                        "id": "chatcmpl-" + str(time.time()),
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk_text},
+                            "finish_reason": None
+                        }]
+                    }
+
+                    yield f"data: {json.dumps(chunk)}\n\n"
+
+                    # leichte Verzögerung für realistische Typing-Illusion
+                    await asyncio.sleep(0.012)  # 12ms optimal
+
+                # final chunk
                 final_chunk = {
                     "id": "chatcmpl-" + str(time.time()),
                     "object": "chat.completion.chunk",
@@ -343,9 +353,10 @@ async def chat_completions(request: Request):
                         "finish_reason": "stop"
                     }]
                 }
+
                 yield f"data: {json.dumps(final_chunk)}\n\n"
                 yield "data: [DONE]\n\n"
-            
+
             return StreamingResponse(generate_stream(), media_type="text/event-stream")
         
         # NON-STREAMING Response
@@ -366,6 +377,7 @@ async def chat_completions(request: Request):
     except Exception as e:
         logger.error(f"[Bridge] Chat-Completion Fehler: {e}")
         return {"error": {"message": str(e), "type": "bridge_error"}}
+
 # -------------------------------------------------------------
 # Health Endpoint (erweitert)
 # -------------------------------------------------------------
@@ -393,7 +405,14 @@ async def health():
 async def list_models():
     return {
         "object": "list",
-        "data": [{"id": "deepseek-r1:14b-qwen-distill-q4_K_M", "object": "model"}],
+        "data": [
+          {"id": "deepseek-r1:8b", "object": "model"},
+          {"id": "qwen3-vl:8b", "object": "model"},
+          {"id": "llama3.1:8b", "object": "model"},
+          {"id": "deepseek-r1:14b", "object": "model"},
+          {"id": "thirdeyeai/DeepSeek-R1-Distill-Qwen-7B-uncensored:Q4_0", "object": "model"},
+          {"id": "dolphin3:8b", "object": "model"}
+        ],
     }
 
 # -------------------------------------------------------------
